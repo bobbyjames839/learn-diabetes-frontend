@@ -22,6 +22,14 @@ interface AppState {
   chatSessions: ChatSessionSummary[]
   loading: boolean
   error: string | null
+  /**
+   * Set when the app-wide profile fetch itself fails — as opposed to `error`,
+   * which is per-page. A signed-in Supabase session says nothing about
+   * whether the backend is actually reachable (a CORS misconfiguration, for
+   * instance, still lets Supabase auth succeed), so the shell blocks on this
+   * rather than rendering pages against a profile that never loaded.
+   */
+  profileError: string | null
 }
 
 const initialState: AppState = {
@@ -32,6 +40,7 @@ const initialState: AppState = {
   chatSessions: [],
   loading: false,
   error: null,
+  profileError: null,
 }
 
 export const loadDashboard = createAsyncThunk('app/dashboard', async () => {
@@ -144,8 +153,15 @@ const slice = createSlice({
         state.loading = false
         state.error = action.error.message ?? 'Could not load your dashboard.'
       })
+      .addCase(loadProfile.pending, (state) => {
+        state.profileError = null
+      })
       .addCase(loadProfile.fulfilled, (state, action) => {
         state.profile = action.payload
+        state.profileError = null
+      })
+      .addCase(loadProfile.rejected, (state, action) => {
+        state.profileError = action.error.message ?? 'Could not reach the server.'
       })
       .addCase(loadLessons.pending, (state) => {
         state.loading = true

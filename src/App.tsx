@@ -3,6 +3,7 @@ import { NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import type { ReactNode } from 'react'
 import { useAuth } from './auth/AuthProvider'
 import { loadProfile, submitOnboarding, useAppDispatch, useAppSelector } from './store'
+import { Button } from './components/ui'
 import type { OnboardingAnswers } from './lib/api'
 import { Avatar, Container, Spinner } from './components/ui'
 import Onboarding from './components/Onboarding'
@@ -124,8 +125,10 @@ const ALWAYS_FIXED_HEIGHT = ['/chat']
 
 function Shell({ children }: { children: ReactNode }) {
   const { pathname } = useLocation()
+  const { signOut } = useAuth()
   const dispatch = useAppDispatch()
   const profile = useAppSelector((s) => s.app.profile)
+  const profileError = useAppSelector((s) => s.app.profileError)
   const [onboardingError, setOnboardingError] = useState<string | null>(null)
   const [onboardingSaving, setOnboardingSaving] = useState(false)
 
@@ -134,6 +137,29 @@ function Shell({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!profile) dispatch(loadProfile())
   }, [dispatch, profile])
+
+  // A Supabase session only proves sign-in succeeded — it says nothing about
+  // whether the backend is reachable (wrong CORS origin, the server being
+  // down). Block here rather than rendering pages against a profile that
+  // never loaded, which would otherwise look like a signed-in but silently
+  // broken app.
+  if (!profile && profileError) {
+    return (
+      <div className="flex min-h-full flex-col items-center justify-center gap-4 px-6 text-center">
+        <h1 className="text-lg font-bold tracking-tight">Couldn't reach the server</h1>
+        <p className="max-w-sm text-sm text-ink-soft">{profileError}</p>
+        <div className="flex gap-3">
+          <Button onClick={() => dispatch(loadProfile())}>Try again</Button>
+          <button
+            onClick={signOut}
+            className="cursor-pointer px-3 py-2 text-sm font-semibold text-ink-soft underline underline-offset-4"
+          >
+            Sign out
+          </button>
+        </div>
+      </div>
+    )
+  }
 
   async function handleOnboarding(answers: OnboardingAnswers) {
     setOnboardingSaving(true)
