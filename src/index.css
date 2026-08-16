@@ -28,7 +28,13 @@ body,
 body {
   background-color: var(--color-cream);
   color: var(--color-ink);
-  font-family: ui-rounded, 'SF Pro Rounded', ui-sans-serif, system-ui, -apple-system, 'Segoe UI',
+  font-family:
+    ui-rounded,
+    'SF Pro Rounded',
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    'Segoe UI',
     sans-serif;
   -webkit-font-smoothing: antialiased;
 }
@@ -119,6 +125,7 @@ body {
 .scroll-soft {
   scrollbar-width: thin;
   scrollbar-color: var(--color-line) transparent;
+  scroll-behavior: smooth;
 }
 .scroll-soft::-webkit-scrollbar {
   width: 10px;
@@ -153,4 +160,57 @@ body {
 }
 .rise {
   animation: rise 0.4s ease-out both;
+}
+
+/* Waiting for the tutor's next step. A stripe travelling across a rule, not a
+   bar filling up: nothing here knows how long the model will take, and a
+   progress bar that doesn't measure progress is a lie told slowly. */
+@keyframes sweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(340%);
+  }
+}
+
+.sweep {
+  animation: sweep 1.5s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+
+/* The tip arrives a beat after the page, so it slides in from the edge it sits
+   against rather than blinking into place. It leaves the same way — the exit is
+   run before unmount so the card isn't yanked off screen mid-read. */
+@keyframes coach-toast-in {
+  from {
+    opacity: 0;
+    transform: translateX(1.5rem) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes coach-toast-out {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: translateX(1.5rem) scale(0.97);
+  }
+}
+.coach-toast {
+  animation: coach-toast-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.coach-toast-leaving {
+  animation: coach-toast-out 0.3s ease-in both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .coach-toast,
+  .coach-toast-leaving {
+    animation-duration: 0.01ms;
+  }
 }

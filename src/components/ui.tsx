@@ -154,7 +154,7 @@ export function Button({
   return (
     <button
       {...props}
-      className={`rounded-lg font-semibold transition disabled:cursor-not-allowed ${variants[variant]} ${sizes[size]} ${className}`}
+      className={`cursor-pointer rounded-lg font-semibold transition disabled:cursor-not-allowed ${variants[variant]} ${sizes[size]} ${className}`}
     >
       {children}
     </button>
@@ -180,7 +180,10 @@ export function ErrorBanner({ message, onRetry }: { message: string; onRetry?: (
     >
       <span>{message}</span>
       {onRetry && (
-        <button onClick={onRetry} className="shrink-0 font-semibold underline underline-offset-2">
+        <button
+          onClick={onRetry}
+          className="shrink-0 cursor-pointer font-semibold underline underline-offset-2"
+        >
           Retry
         </button>
       )}
@@ -232,15 +235,5 @@ export function SectionHeading({
       </div>
       {action}
     </div>
-  )
-}
-
-export function SafetyNotice() {
-  return (
-    <p className="text-xs leading-relaxed text-ink-soft">
-      <strong className="font-semibold text-ink">Educational only.</strong> This app explains why
-      glucose behaves the way it does. It never suggests insulin doses or treatment actions, and is
-      not a substitute for your diabetes team.
-    </p>
   )
 }

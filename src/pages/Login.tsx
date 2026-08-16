@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { Button, SafetyNotice } from '../components/ui'
+import { Button } from '../components/ui'
 
 type Mode = 'signin' | 'signup'
 
@@ -91,10 +91,6 @@ export default function Login() {
             ))}
           </dl>
         </div>
-
-        <div className="max-w-md">
-          <SafetyNotice />
-        </div>
       </div>
 
       {/* Form */}
@@ -167,7 +163,7 @@ export default function Login() {
                 setMode(mode === 'signin' ? 'signup' : 'signin')
                 setError(null)
               }}
-              className="font-semibold text-amber-deep underline underline-offset-4"
+              className="cursor-pointer font-semibold text-amber-deep underline underline-offset-4"
             >
               {mode === 'signin' ? 'Create one' : 'Sign in'}
             </button>
