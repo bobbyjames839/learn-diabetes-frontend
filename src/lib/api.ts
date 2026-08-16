@@ -284,6 +284,13 @@ export interface Stats {
   trouble_spots: TroubleSpot[]
 }
 
+/**
+ * In dev, requests hit `/api/...` and vite's proxy forwards them to the
+ * local backend. In production there's no proxy, so VITE_API_URL points
+ * straight at the deployed backend. Left unset, paths stay relative.
+ */
+const API_BASE = import.meta.env.VITE_API_URL ?? ''
+
 /** Every call carries the Supabase access token; the API rejects anything else. */
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const {
@@ -292,7 +299,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (!session) throw new Error('Your session has expired. Sign in again.')
 
-  const res = await fetch(path, {
+  const res = await fetch(`${API_BASE}${path}`, {
     ...init,
     headers: {
       'Content-Type': 'application/json',
