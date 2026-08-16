@@ -1,0 +1,156 @@
+@import 'tailwindcss';
+
+@theme {
+  /* Warm, friendly palette — cream ground, amber accent. */
+  --color-cream: #fdf8f1;
+  --color-cream-deep: #f7eee1;
+  --color-card: #fffdfa;
+  --color-ink: #2b2118;
+  --color-ink-soft: #7a6a5c;
+  --color-line: #ece0d1;
+  --color-amber: #e08a2e;
+  --color-amber-deep: #c2701c;
+  --color-amber-wash: #fdf0dd;
+  --color-sage: #4f8a6b;
+  --color-sage-wash: #e6f2ea;
+  --color-berry: #c2506a;
+  --color-berry-wash: #fbe8ec;
+
+  --radius-card: 1.25rem;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background-color: var(--color-cream);
+  color: var(--color-ink);
+  font-family: ui-rounded, 'SF Pro Rounded', ui-sans-serif, system-ui, -apple-system, 'Segoe UI',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Lesson body markdown — sized for reading on a desktop, not a phone */
+.lesson-body {
+  font-size: 1.0625rem;
+  line-height: 1.8;
+  color: #40332a;
+}
+.lesson-body h2 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin: 2.5rem 0 1rem;
+  color: var(--color-ink);
+}
+.lesson-body h2:first-child {
+  margin-top: 0;
+}
+.lesson-body h3 {
+  font-size: 1.125rem;
+  font-weight: 700;
+  margin: 2rem 0 0.6rem;
+  color: var(--color-amber-deep);
+}
+.lesson-body p {
+  margin-bottom: 1.25rem;
+}
+.lesson-body ul,
+.lesson-body ol {
+  margin: 0 0 1rem 1.25rem;
+  list-style: revert;
+}
+.lesson-body li {
+  margin-bottom: 0.35rem;
+}
+.lesson-body strong {
+  font-weight: 700;
+  color: var(--color-ink);
+}
+.lesson-body blockquote {
+  border-left: 3px solid var(--color-amber);
+  background: var(--color-amber-wash);
+  padding: 0.75rem 1rem;
+  border-radius: 0 0.75rem 0.75rem 0;
+  margin-bottom: 1rem;
+}
+.lesson-body blockquote p:last-child {
+  margin-bottom: 0;
+}
+.lesson-body code {
+  background: var(--color-cream-deep);
+  padding: 0.1rem 0.35rem;
+  border-radius: 0.4rem;
+  font-size: 0.9em;
+}
+.lesson-body pre {
+  background: var(--color-cream-deep);
+  padding: 1rem;
+  border-radius: 0.75rem;
+  overflow-x: auto;
+  margin-bottom: 1rem;
+}
+.lesson-body pre code {
+  background: none;
+  padding: 0;
+}
+.lesson-body table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 1rem;
+  font-size: 0.925rem;
+}
+.lesson-body th,
+.lesson-body td {
+  border: 1px solid var(--color-line);
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+}
+.lesson-body th {
+  background: var(--color-cream-deep);
+  font-weight: 700;
+}
+
+/* Scrollbars for inner scroll regions. The platform default paints a white
+   track, which cuts a bright stripe through the warm palette. */
+.scroll-soft {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-line) transparent;
+}
+.scroll-soft::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+.scroll-soft::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scroll-soft::-webkit-scrollbar-thumb {
+  background-color: var(--color-line);
+  border-radius: 999px;
+  /* Transparent border + clip inset the thumb so it reads as a slim pill. */
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+.scroll-soft::-webkit-scrollbar-thumb:hover {
+  background-color: #dcccb6;
+}
+.scroll-soft::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.rise {
+  animation: rise 0.4s ease-out both;
+}
