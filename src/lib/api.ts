@@ -375,22 +375,11 @@ export const api = {
       body: JSON.stringify({ brief }),
     }),
 
-  /**
-   * One turn of a chat session. The whole transcript goes up each time: the
-   * server stores none of it, so the browser is the only place the conversation
-   * exists. Comes back with a fresh profile on the rare turn that revised it.
-   */
-  chat: (messages: ChatTurn[], brief: SessionBrief) =>
-    request<{
-      reply: string
-      check: ChatCheck | null
-      profile: Profile | null
-      /** The tutor judging the session done. An offer, not an ending. */
-      wrap_up: boolean
-    }>('/api/chat', {
-      method: 'POST',
-      body: JSON.stringify({ messages, brief }),
-    }),
+  // A turn of a session is not here. `POST /api/chat` streams, and its client
+  // is `useChat` in `pages/Chat.tsx` — the AI SDK owns that request, including
+  // the auth header, so routing it through this helper would mean two transports
+  // for one endpoint. Everything else a session does is a plain call and lives
+  // here.
 
   /**
    * Ends a chat session: the model reads the conversation back and writes up to

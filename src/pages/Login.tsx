@@ -4,21 +4,6 @@ import { Button } from '../components/ui'
 
 type Mode = 'signin' | 'signup'
 
-const POINTS = [
-  {
-    title: 'Mechanisms, not rules',
-    body: 'Why a high-fat meal shows up hours later, why a sprint can push glucose up, why a correction on top of active insulin ends in a low.',
-  },
-  {
-    title: 'Short, focused lessons',
-    body: 'Each one takes a few minutes and covers a single idea, with a worked example using hypothetical numbers.',
-  },
-  {
-    title: 'Track what you have covered',
-    body: 'Your progress, streak and remaining lessons are saved to your account.',
-  },
-]
-
 export default function Login() {
   const [mode, setMode] = useState<Mode>('signin')
   const [email, setEmail] = useState('')
@@ -60,43 +45,11 @@ export default function Login() {
   }
 
   return (
-    <div className="grid min-h-full lg:grid-cols-2">
-      {/* Pitch */}
-      <div className="hidden flex-col justify-between bg-cream-deep px-12 py-12 lg:flex xl:px-20">
-        <div className="flex items-center gap-2.5">
-          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber text-sm font-bold text-white">
-            L
-          </span>
-          <span className="text-[15px] font-bold tracking-tight">Learn Diabetes</span>
-        </div>
-
-        <div className="max-w-md">
-          <h1 className="text-4xl font-bold leading-[1.15] tracking-tight">
-            Understand how glucose actually behaves.
-          </h1>
-          <p className="mt-4 text-base leading-relaxed text-ink-soft">
-            A short course on the mechanisms behind type 1 diabetes — carbohydrate, insulin timing,
-            exercise, illness and the patterns they create.
-          </p>
-
-          <dl className="mt-10 space-y-6">
-            {POINTS.map((p) => (
-              <div key={p.title} className="flex gap-3">
-                <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-amber" />
-                <div>
-                  <dt className="text-sm font-bold">{p.title}</dt>
-                  <dd className="mt-1 text-sm leading-relaxed text-ink-soft">{p.body}</dd>
-                </div>
-              </div>
-            ))}
-          </dl>
-        </div>
-      </div>
-
+    <div className="grid min-h-full">
       {/* Form */}
       <div className="flex items-center justify-center px-6 py-12">
         <div className="w-full max-w-sm rise">
-          <div className="mb-8 lg:hidden">
+          <div className="mb-8">
             <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber text-base font-bold text-white">
               L
             </span>

@@ -1,9 +1,14 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useChat } from '@ai-sdk/react'
+import { DefaultChatTransport } from 'ai'
+import type { UIMessage } from 'ai'
 import { SESSION_TOPICS, api } from '../lib/api'
+import { supabase } from '../lib/supabase'
 import type {
   ChatCheck,
   ChatSessionSummary,
   ChatTurn,
+  Profile,
   SessionBrief,
   SessionTopic,
 } from '../lib/api'
@@ -56,6 +61,8 @@ import { Button } from '../components/ui'
 type Entry =
   | {
       kind: 'tutor'
+      /** The AI SDK message this came from — what `picked` is keyed on. */
+      id: string
       content: string
       check: ChatCheck | null
       picked: number | null
@@ -70,6 +77,64 @@ type Phase = 'setup' | 'session'
 
 /** The reader's "next": carried on without having to invent a question. */
 const KEEP_GOING = 'Keep going.'
+
+/**
+ * The tutor's reply as the AI SDK delivers it: prose in `text` parts, and
+ * everything else in `data-*` parts.
+ *
+ * The turn is a JSON object on the server — a reply, and optionally a check, a
+ * wrap-up proposal and a profile revision — but only the prose can be shown
+ * half-written, so that is the only half that streams. The rest arrives whole,
+ * after the object has closed and been validated. Reading it back off the
+ * message is the client side of that split.
+ */
+function textOf(message: UIMessage): string {
+  return message.parts
+    .filter((p): p is { type: 'text'; text: string } => p.type === 'text')
+    .map((p) => p.text)
+    .join('')
+}
+
+function dataOf<T>(message: UIMessage, name: string): T | null {
+  const part = message.parts.find((p) => p.type === `data-${name}`)
+  return part && 'data' in part ? ((part as { data: T }).data ?? null) : null
+}
+
+/**
+ * The session as the screen needs it, out of the SDK's messages.
+ *
+ * `useChat` owns the transcript now — it is the thing that knows what is
+ * in flight — so this is a projection of its state rather than a second copy.
+ * The one thing it can't own is `picked`: which option the reader chose is
+ * never sent anywhere and never comes back, so it is kept here, keyed by
+ * message id.
+ */
+function toEntries(messages: UIMessage[], picked: Record<string, number>): Entry[] {
+  return messages.map((m) =>
+    m.role === 'assistant'
+      ? {
+          kind: 'tutor' as const,
+          id: m.id,
+          content: textOf(m),
+          check: dataOf<ChatCheck>(m, 'check'),
+          picked: picked[m.id] ?? null,
+          wrapUp: dataOf<{ wrap_up: boolean }>(m, 'wrap-up')?.wrap_up ?? false,
+        }
+      : { kind: 'reader' as const, content: textOf(m) },
+  )
+}
+
+/** A message in the SDK's shape, for the opening turn the tutor is handed. */
+function tutorMessage(id: string, reply: string, check: ChatCheck | null): UIMessage {
+  return {
+    id,
+    role: 'assistant',
+    parts: [
+      { type: 'text', text: reply },
+      ...(check ? [{ type: 'data-check' as const, data: check }] : []),
+    ],
+  } as UIMessage
+}
 
 /** The session as the server wants it back: just who said what. */
 function toTurns(entries: Entry[]): ChatTurn[] {
@@ -102,13 +167,17 @@ export default function Chat() {
 
   const [phase, setPhase] = useState<Phase>('setup')
   const [brief, setBrief] = useState<SessionBrief>({ topic: 'tutor_picks' })
-  const [entries, setEntries] = useState<Entry[]>([])
   // Which tutor turn is on screen. The session is stepped, so this is the
   // reader's position in it rather than a scroll offset.
   const [step, setStep] = useState(0)
   const [draft, setDraft] = useState('')
-  const [thinking, setThinking] = useState(false)
+  // The opening turn only. Every turn after it is `useChat`'s to track.
+  const [starting, setStarting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Which option was chosen on each check, by message id. Client-only: a check
+  // is answered in the browser and never recorded anywhere, so this is the only
+  // place the choice exists.
+  const [picked, setPicked] = useState<Record<string, number>>({})
   // What the session that just ended left behind, while its dialog is up.
   // Null the rest of the time, which is most of it.
   const [recap, setRecap] = useState<ChatSessionSummary | null>(null)
@@ -117,13 +186,58 @@ export default function Chat() {
   // is a lookup — but they share the same dialog.
   const [viewing, setViewing] = useState<ChatSessionSummary | null>(null)
 
+  const briefRef = useRef(brief)
+  briefRef.current = brief
+
+  /**
+   * The transport: where `useChat` sends a turn, and what it carries.
+   *
+   * Built once. Both hooks read a ref rather than closing over state, because
+   * the transport outlives every render — a `headers` that captured the token
+   * at mount would be sending a stale one an hour into a session, and a `body`
+   * that captured the brief would send the reader's first choice forever.
+   *
+   * The brief rides on every turn for the same reason it always did: sent once,
+   * it would be forty turns behind by the end.
+   */
+  const transport = useMemo(
+    () =>
+      new DefaultChatTransport<UIMessage>({
+        api: '/api/chat',
+        headers: async () => {
+          const {
+            data: { session },
+          } = await supabase.auth.getSession()
+          if (!session) throw new Error('Your session has expired. Sign in again.')
+          return { Authorization: `Bearer ${session.access_token}` }
+        },
+        body: () => ({ brief: briefRef.current }),
+      }),
+    [],
+  )
+
+  const {
+    messages,
+    setMessages,
+    sendMessage,
+    status,
+    error: streamError,
+  } = useChat({ transport })
+
+  // The transcript, as the screen needs it. Derived rather than stored: two
+  // copies of a conversation that is being written into live is one too many.
+  const entries = useMemo(() => toEntries(messages, picked), [messages, picked])
+
   // Read at unmount time. The cleanup below runs once, so it would otherwise
   // close over the empty transcript (and initial brief) this component
   // started with.
   const entriesRef = useRef(entries)
   entriesRef.current = entries
-  const briefRef = useRef(brief)
-  briefRef.current = brief
+
+  // Sent, but nothing back yet. The screen waits on this and streams the rest.
+  const waiting = starting || status === 'submitted'
+  const streaming = status === 'streaming'
+  const busy = waiting || streaming
 
   // Past sessions, for the setup screen — recaps only, the conversations
   // themselves were never kept. Loaded once; a session just ended is added to
@@ -159,68 +273,71 @@ export default function Chat() {
 
   const name = profile?.display_name || profile?.email?.split('@')[0] || ''
 
+  // Move them on to whatever just arrived. A new turn they have to go and find
+  // is the chat-log failure this whole screen is built to avoid. Keyed on the
+  // count, so stepping back through earlier turns doesn't fight this.
+  const stepCount = steps.length
+  useEffect(() => {
+    setStep(Math.max(0, stepCount - 1))
+  }, [stepCount])
+
+  // The profile comes back only on the rare turn that revised it, as a data
+  // part on that turn. Nothing is said about it to the reader — it is
+  // bookkeeping, not part of the conversation.
+  //
+  // Applied once per message rather than once per render: the streaming message
+  // is rebuilt on every chunk, so an effect watching the part itself would fire
+  // repeatedly for the same revision.
+  const applied = useRef<string | null>(null)
+  useEffect(() => {
+    const last = messages.at(-1)
+    if (!last || last.role !== 'assistant' || applied.current === last.id) return
+    const revised = dataOf<Profile>(last, 'profile')
+    if (!revised) return
+    applied.current = last.id
+    dispatch(profileReceived(revised))
+  }, [messages, dispatch])
+
   /** The reader's one opening move: the brief. Everything after this is a reply. */
   async function begin() {
-    if (thinking) return
+    if (busy) return
     setPhase('session')
-    setEntries([])
+    setMessages([])
+    setPicked({})
     setStep(0)
-    setThinking(true)
+    setStarting(true)
     setError(null)
     setRecap(null)
 
     try {
+      // The opening turn alone is not streamed: there is nothing on screen to
+      // hold the reader while it writes, and it is one short message rather
+      // than a reply to something they said. It arrives as a whole page, which
+      // is what the waiting state was already built for.
       const { reply, check } = await api.startChat(brief)
-      setEntries([{ kind: 'tutor', content: reply, check, picked: null, wrapUp: false }])
+      setMessages([tutorMessage(crypto.randomUUID(), reply, check)])
     } catch (e) {
       setError(e instanceof Error ? e.message : 'The tutor could not start a session just now.')
     } finally {
-      setThinking(false)
+      setStarting(false)
     }
   }
 
-  /** Sends whatever the reader just contributed and appends the tutor's answer. */
-  const send = useCallback(
-    async (content: string, from: Entry[]) => {
-      const next: Entry[] = [...from, { kind: 'reader', content }]
-      setEntries(next)
-      setThinking(true)
-      setError(null)
-
-      try {
-        const {
-          reply,
-          check,
-          profile: revised,
-          wrap_up: wrapUp,
-        } = await api.chat(toTurns(next), brief)
-        const grown: Entry[] = [
-          ...next,
-          { kind: 'tutor', content: reply, check, picked: null, wrapUp },
-        ]
-        setEntries(grown)
-        // Move them on to what just arrived. A new turn they have to go and
-        // find is the chat-log failure this whole screen is built to avoid.
-        setStep(grown.filter((e) => e.kind === 'tutor').length - 1)
-        // The profile comes back only on the rare turn that revised it. Nothing
-        // is said about it — it's bookkeeping, not part of the conversation.
-        if (revised) dispatch(profileReceived(revised))
-      } catch (e) {
-        // The reader's own message stays on screen: they said it, and rolling it
-        // back so they have to type it again is the worst possible apology.
-        setError(e instanceof Error ? e.message : 'The tutor could not answer just now.')
-      } finally {
-        setThinking(false)
-      }
-    },
-    [brief, dispatch],
-  )
+  /** Sends whatever the reader just contributed. The answer streams back in. */
+  function send(content: string) {
+    if (busy) return
+    setError(null)
+    // The reader's own message is appended by the SDK and stays on screen even
+    // if the turn fails: they said it, and rolling it back so they have to type
+    // it again is the worst possible apology.
+    sendMessage({ text: content })
+  }
 
   function submitDraft() {
     const content = draft.trim()
-    if (!content || thinking) return
+    if (!content || busy) return
     setDraft('')
-    send(content, entries)
+    send(content)
   }
 
   /**
@@ -231,26 +348,24 @@ export default function Chat() {
    */
   function answerCheck(entryIndex: number, optionIndex: number) {
     const entry = entries[entryIndex]
-    if (thinking || entry.kind !== 'tutor' || !entry.check || entry.picked !== null) return
+    if (busy || entry.kind !== 'tutor' || !entry.check || entry.picked !== null) return
 
     const chosen = entry.check.options[optionIndex]
-    const answered = entries.map((e, i) =>
-      i === entryIndex && e.kind === 'tutor' ? { ...e, picked: optionIndex } : e,
-    )
-    setEntries(answered)
+    setPicked((p) => ({ ...p, [entry.id]: optionIndex }))
     // Sent as their words, because from the model's side that is what it was:
     // it asked a question and this is the answer it got back.
-    send(`My answer: ${chosen.text}`, answered)
+    send(`My answer: ${chosen.text}`)
   }
 
   async function finish() {
-    if (thinking) return
+    if (busy) return
     if (entries.length < 2) {
       setPhase('setup')
-      setEntries([])
+      setMessages([])
+      setPicked({})
       return
     }
-    setThinking(true)
+    setStarting(true)
     try {
       const { session } = await dispatch(
         endChatSession({ messages: toTurns(entries), brief, checks: tallyChecks(entries) }),
@@ -260,8 +375,9 @@ export default function Chat() {
       // Ending is a courtesy on top of a conversation that already happened.
       // Failing to write cards and a recap is not worth an error banner.
     } finally {
-      setEntries([])
-      setThinking(false)
+      setMessages([])
+      setPicked({})
+      setStarting(false)
       setPhase('setup')
     }
   }
@@ -291,6 +407,10 @@ export default function Chat() {
     )
   }
 
+  // One banner, two sources: the opening turn is a plain request and fails like
+  // one, every turn after it fails inside the stream and `useChat` surfaces it.
+  const failure = error ?? (streamError ? streamError.message : null)
+
   const tutorIndex = steps[step]
   const current = tutorIndex === undefined ? null : entries[tutorIndex]
   const before = tutorIndex !== undefined && tutorIndex > 0 ? entries[tutorIndex - 1] : null
@@ -314,7 +434,7 @@ export default function Chat() {
   // It also belongs to the live end of the session. Looking back at an earlier
   // turn there is nothing to reply to, and while a check is open a text box
   // beside it invites talking around the question rather than answering it.
-  const composer = current && !thinking && (
+  const composer = current && !busy && (
     <div className="shrink-0 border-t border-line bg-card/70 px-6 py-3.5 backdrop-blur sm:px-8">
       <div className="mx-auto w-full max-w-2xl">
         {!atLatest ? (
@@ -369,7 +489,7 @@ export default function Chat() {
               </Button>
             ) : (
               <button
-                onClick={() => send(KEEP_GOING, entries)}
+                onClick={() => send(KEEP_GOING)}
                 className="h-10 shrink-0 rounded-card border border-line px-4 text-sm font-semibold text-ink-soft transition hover:border-amber/50 hover:text-ink"
               >
                 Keep going →
@@ -386,17 +506,18 @@ export default function Chat() {
       brief={brief}
       step={step}
       total={steps.length}
-      thinking={thinking}
+      thinking={busy}
       onBack={() => setStep((s) => Math.max(0, s - 1))}
       onForward={() => setStep((s) => Math.min(steps.length - 1, s + 1))}
       onExit={finish}
       footer={composer}
     >
-      {thinking ? (
-        // The whole page waits, rather than a placeholder arriving underneath
-        // the last turn. A session is stepped: what's coming isn't the next
-        // message in a log, it's the next page, so the current one steps aside
-        // for it the same way a lesson section gives way to its checkpoint.
+      {waiting ? (
+        // The page waits only until the first words land. A session is stepped:
+        // what's coming isn't the next message in a log, it's the next page, so
+        // the current one steps aside for it the same way a lesson section gives
+        // way to its checkpoint. Once the tutor starts writing, that page is the
+        // turn itself, filling in.
         <Waiting
           label={entries.length === 0 ? 'Putting a session together' : 'Reading what you said'}
           // Their own words while the tutor works on them — but not the canned
@@ -419,21 +540,27 @@ export default function Chat() {
             <div key={step} className="rise space-y-7">
               <p className="whitespace-pre-wrap text-[17px] leading-[1.8] text-ink">
                 {current.content}
+                {/* Only while this turn is still being written, and only on the
+                    turn being written — stepping back mid-stream shows an older
+                    page, which is finished. */}
+                {streaming && atLatest && (
+                  <span className="ml-0.5 inline-block h-[1.1em] w-[2px] translate-y-[0.18em] animate-pulse bg-amber align-baseline" />
+                )}
               </p>
               {current.check && (
                 <Check
                   check={current.check}
                   picked={current.picked}
-                  disabled={thinking || !atLatest}
+                  disabled={busy || !atLatest}
                   onPick={(optionIndex) => answerCheck(tutorIndex, optionIndex)}
                 />
               )}
             </div>
           )}
 
-          {error && (
+          {failure && (
             <div className="mt-8 rounded-card border border-berry/30 bg-berry-wash/40 px-5 py-4">
-              <p className="text-sm text-berry">{error}</p>
+              <p className="text-sm text-berry">{failure}</p>
               {entries.length === 0 && (
                 <button
                   onClick={begin}
