@@ -78,6 +78,18 @@ type Phase = 'setup' | 'session'
 /** The reader's "next": carried on without having to invent a question. */
 const KEEP_GOING = 'Keep going.'
 
+/** A failed turn's message is the raw response body — `{"detail": "..."}` for
+ * this API. Pull the detail out where there is one, rather than showing braces. */
+function detailOrMessage(message: string): string {
+  try {
+    const parsed = JSON.parse(message)
+    if (parsed && typeof parsed.detail === 'string') return parsed.detail
+  } catch {
+    // Not JSON — a network-level failure, say. Show it as it came.
+  }
+  return message
+}
+
 /**
  * The tutor's reply as the AI SDK delivers it: prose in `text` parts, and
  * everything else in `data-*` parts.
@@ -234,9 +246,16 @@ export default function Chat() {
   const entriesRef = useRef(entries)
   entriesRef.current = entries
 
-  // Sent, but nothing back yet. The screen waits on this and streams the rest.
-  const waiting = starting || status === 'submitted'
-  const streaming = status === 'streaming'
+  // Sent, but nothing back yet. `status` flips to "streaming" the instant the
+  // response opens — the server sends `text-start` before it has asked the
+  // model anything — which is well before any actual word has arrived, so it
+  // alone would skip the waiting page straight to a turn with nothing on it.
+  // Stay on it until the in-flight message actually has text.
+  const lastEntry = entries.at(-1)
+  const tutorTurnEmpty =
+    status === 'streaming' && lastEntry?.kind === 'tutor' && lastEntry.content.length === 0
+  const waiting = starting || status === 'submitted' || tutorTurnEmpty
+  const streaming = status === 'streaming' && !tutorTurnEmpty
   const busy = waiting || streaming
 
   // Past sessions, for the setup screen — recaps only, the conversations
@@ -409,7 +428,12 @@ export default function Chat() {
 
   // One banner, two sources: the opening turn is a plain request and fails like
   // one, every turn after it fails inside the stream and `useChat` surfaces it.
-  const failure = error ?? (streamError ? streamError.message : null)
+  //
+  // A non-OK turn throws with the raw response body as its message (the
+  // transport's own doing — see `HttpChatTransport.sendMessages`), which for
+  // this API is a `{"detail": "..."}` JSON string rather than prose. Dig the
+  // detail back out so a 401 reads as "Session expired." instead of braces.
+  const failure = error ?? (streamError ? detailOrMessage(streamError.message) : null)
 
   const tutorIndex = steps[step]
   const current = tutorIndex === undefined ? null : entries[tutorIndex]
@@ -610,6 +634,23 @@ function SessionShell({
 }) {
   const topic = SESSION_TOPICS.find((t) => t.value === brief.topic)
 
+  // Follows new content to the bottom rather than leaving the reader to chase
+  // it — a streaming reply growing past the fold, or a fresh turn landing,
+  // should both end with the latest text in view without a manual scroll.
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const contentRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const container = scrollRef.current
+    const content = contentRef.current
+    if (!container || !content) return
+    const scrollToBottom = () => container.scrollTo({ top: container.scrollHeight })
+    scrollToBottom()
+    const observer = new ResizeObserver(scrollToBottom)
+    observer.observe(content)
+    return () => observer.disconnect()
+  }, [step])
+
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-cream">
       <header className="shrink-0 border-b border-line bg-card/70 backdrop-blur">
@@ -658,7 +699,9 @@ function SessionShell({
         </div>
       </header>
 
-      <div className="flex-1 overflow-y-auto">{children}</div>
+      <div ref={scrollRef} className="flex-1 overflow-y-auto">
+        <div ref={contentRef}>{children}</div>
+      </div>
       {footer}
     </div>
   )

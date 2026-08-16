@@ -40,6 +40,12 @@ export default function LessonDetail() {
 
   const [lesson, setLesson] = useState<Lesson | null>(null)
   const [questions, setQuestions] = useState<Question[]>([])
+  // True while `GET /lessons/:slug/questions` is in flight. On a lesson opened
+  // for the first time ever, that request is the one generating the
+  // checkpoints — a few seconds, not instant — and without this the reader
+  // could read straight past a section before its question exists, with
+  // nothing on screen saying one was still being written.
+  const [questionsLoading, setQuestionsLoading] = useState(true)
   const [settled, setSettled] = useState<Record<string, AnswerResult>>({})
   // Every checkpoint attempt made this session, in order. Held here rather than
   // saved as it happens — it only becomes a record when Mark complete is pressed.
@@ -61,6 +67,7 @@ export default function LessonDetail() {
     let cancelled = false
     setLesson(null)
     setQuestions([])
+    setQuestionsLoading(true)
     setSettled({})
     setAnswers([])
     setError(null)
@@ -89,6 +96,7 @@ export default function LessonDetail() {
         )
       })
       .catch(() => {})
+      .finally(() => !cancelled && setQuestionsLoading(false))
 
     return () => {
       cancelled = true
@@ -136,8 +144,13 @@ export default function LessonDetail() {
   }, [step?.id])
 
   // A checkpoint holds the lesson until it's resolved — that's the point of it.
-  // No skipping: the reader answers it, or stays.
-  const blocked = (step?.kind === 'check' && !settled[step.question.id]) || settleWait
+  // No skipping: the reader answers it, or stays. The same holds for leaving a
+  // `read` step while its checkpoint might still be generating: better a wait
+  // with something to point at than a question appearing after they've moved
+  // on, or never appearing to have existed at all.
+  const waitingOnQuestions = step?.kind === 'read' && questionsLoading
+  const blocked =
+    (step?.kind === 'check' && !settled[step.question.id]) || settleWait || waitingOnQuestions
 
   const goNext = useCallback(() => {
     if (blocked || index >= steps.length - 1) return
@@ -223,7 +236,7 @@ export default function LessonDetail() {
               <span className="w-32 shrink-0" />
             ) : (
               <Button onClick={goNext} disabled={blocked} className="w-32 shrink-0">
-                Continue →
+                {waitingOnQuestions ? 'Preparing…' : 'Continue →'}
               </Button>
             )}
           </div>
