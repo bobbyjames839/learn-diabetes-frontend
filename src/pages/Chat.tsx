@@ -204,6 +204,11 @@ export default function Chat() {
   const [draft, setDraft] = useState('')
   // The opening turn only. Every turn after it is `useChat`'s to track.
   const [starting, setStarting] = useState(false)
+  // Ending, via either "End session" or "Finish session" — its own state
+  // rather than reusing `starting`, because it needs its own loading screen:
+  // writing the session's cards and recap is a different wait from the tutor
+  // composing its next turn, and reads oddly labelled as one.
+  const [finishing, setFinishing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   // Which option was chosen on each check, by message id. Client-only: a check
   // is answered in the browser and never recorded anywhere, so this is the only
@@ -282,7 +287,7 @@ export default function Chat() {
     status === 'streaming' && lastEntry?.kind === 'tutor' && lastEntry.content.length === 0
   const waiting = starting || status === 'submitted' || tutorTurnEmpty
   const streaming = status === 'streaming' && !tutorTurnEmpty
-  const busy = waiting || streaming
+  const busy = waiting || streaming || finishing
 
   // Past sessions, for the setup screen — recaps only, the conversations
   // themselves were never kept. Loaded once; a session just ended is added to
@@ -445,7 +450,7 @@ export default function Chat() {
       return
     }
     endedRef.current = true
-    setStarting(true)
+    setFinishing(true)
     try {
       const { session } = await dispatch(
         endChatSession({ messages: toTurns(entries), brief, checks: tallyChecks(entries) }),
@@ -457,7 +462,7 @@ export default function Chat() {
     } finally {
       setMessages([])
       setPicked({})
-      setStarting(false)
+      setFinishing(false)
       setPhase('setup')
       endedRef.current = false
     }
@@ -600,7 +605,13 @@ export default function Chat() {
       onExit={finish}
       footer={composer}
     >
-      {waiting || settling ? (
+      {finishing ? (
+        // Its own screen rather than falling into the branch below: ending
+        // writes the session's cards and recap, which is a different wait
+        // from the tutor composing its next turn, and "Reading what you
+        // said" is actively wrong once the reader has asked to leave.
+        <Waiting label="Wrapping up your session" aside={null} />
+      ) : waiting || settling ? (
         // The page waits only until the first words land — and again, on the
         // same screen, if the turn goes quiet after its prose while the model
         // is still writing the check or wrap-up behind it. One loading state,
