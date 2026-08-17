@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import type { ReactNode } from 'react'
 import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport } from 'ai'
 import type { UIMessage } from 'ai'
@@ -80,6 +81,23 @@ const KEEP_GOING = 'Keep going.'
 
 /** A failed turn's message is the raw response body — `{"detail": "..."}` for
  * this API. Pull the detail out where there is one, rather than showing braces. */
+/**
+ * `*word*` as bold, rather than as literal asterisks. The backend leaves
+ * emphasis markers in tutor text instead of stripping them (see
+ * `llm.clean_model_text`) because this is the one screen that renders
+ * markdown emphasis rather than showing it plain.
+ */
+function renderEmphasis(text: string): ReactNode {
+  const parts = text.split(/(\*[^*\n]+\*)/g)
+  return parts.map((part, i) =>
+    part.length > 2 && part.startsWith('*') && part.endsWith('*') ? (
+      <strong key={i}>{part.slice(1, -1)}</strong>
+    ) : (
+      part
+    ),
+  )
+}
+
 function detailOrMessage(message: string): string {
   try {
     const parsed = JSON.parse(message)
@@ -289,6 +307,34 @@ export default function Chat() {
     [entries],
   )
   const atLatest = step >= steps.length - 1
+  const tutorIndex = steps[step]
+  const current = tutorIndex === undefined ? null : entries[tutorIndex]
+
+  // The prose is only the first half of a turn: the check, the wrap-up
+  // proposal and the profile revision all arrive as data parts *after* the
+  // text has closed, and the reader has no visibility into that — the cursor
+  // just sits at the last word while the model keeps writing them. `settling`
+  // catches the gap: true once this turn's text has gone quiet for a stretch
+  // while the stream is still open, so there is something on screen saying a
+  // follow-up is still coming rather than nothing.
+  //
+  // Computed here, above the `phase === 'setup'` early return below, so these
+  // hooks run on every render regardless of phase — conditionally skipping a
+  // hook call is what breaks React's hook order.
+  const currentTutorId = current?.kind === 'tutor' ? current.id : null
+  const currentContent = current?.kind === 'tutor' ? current.content : ''
+  const [settling, setSettling] = useState(false)
+  useEffect(() => {
+    if (!streaming || !atLatest || !currentTutorId) {
+      setSettling(false)
+      return
+    }
+    setSettling(false)
+    const timer = setTimeout(() => setSettling(true), 500)
+    return () => clearTimeout(timer)
+    // Re-armed on every new stretch of text, not just once per message.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [streaming, atLatest, currentTutorId, currentContent])
 
   const name = profile?.display_name || profile?.email?.split('@')[0] || ''
 
@@ -435,8 +481,6 @@ export default function Chat() {
   // detail back out so a 401 reads as "Session expired." instead of braces.
   const failure = error ?? (streamError ? detailOrMessage(streamError.message) : null)
 
-  const tutorIndex = steps[step]
-  const current = tutorIndex === undefined ? null : entries[tutorIndex]
   const before = tutorIndex !== undefined && tutorIndex > 0 ? entries[tutorIndex - 1] : null
   const openCheck =
     atLatest && current?.kind === 'tutor' && !!current.check && current.picked === null
@@ -563,7 +607,7 @@ export default function Chat() {
             // the page should feel like it turned, not like text was swapped.
             <div key={step} className="rise space-y-7">
               <p className="whitespace-pre-wrap text-[17px] leading-[1.8] text-ink">
-                {current.content}
+                {renderEmphasis(current.content)}
                 {/* Only while this turn is still being written, and only on the
                     turn being written — stepping back mid-stream shows an older
                     page, which is finished. */}
@@ -571,6 +615,16 @@ export default function Chat() {
                   <span className="ml-0.5 inline-block h-[1.1em] w-[2px] translate-y-[0.18em] animate-pulse bg-amber align-baseline" />
                 )}
               </p>
+              {settling && (
+                <p className="flex items-center gap-2 text-sm text-ink-soft">
+                  <span className="inline-flex gap-1">
+                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-amber [animation-delay:-0.3s]" />
+                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-amber [animation-delay:-0.15s]" />
+                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-amber" />
+                  </span>
+                  Putting together what's next…
+                </p>
+              )}
               {current.check && (
                 <Check
                   check={current.check}
@@ -1025,7 +1079,7 @@ function Check({
       </div>
 
       <p className="mt-3 whitespace-pre-line text-base font-semibold leading-relaxed">
-        {check.question}
+        {renderEmphasis(check.question)}
       </p>
 
       <ul className="mt-5 space-y-2">
@@ -1050,7 +1104,7 @@ function Check({
                 <span className="mt-px w-4 shrink-0 text-center font-bold">
                   {answered && option.correct ? '✓' : isPicked ? '✗' : ''}
                 </span>
-                <span>{option.text}</span>
+                <span>{renderEmphasis(option.text)}</span>
               </button>
             </li>
           )
@@ -1061,7 +1115,7 @@ function Check({
           they choose rather than after a round trip. */}
       {answered && (
         <p className="mt-5 border-t border-line/70 pt-4 text-sm leading-relaxed">
-          {chosen!.response}
+          {renderEmphasis(chosen!.response)}
         </p>
       )}
     </section>

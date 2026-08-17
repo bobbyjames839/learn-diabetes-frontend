@@ -194,7 +194,7 @@ export default function Home() {
 
           <div className="grid min-h-0 flex-1 gap-4 sm:grid-cols-2">
             <TroubleSpots spots={stats.trouble_spots} answered={stats.checkpoints_answered} />
-            <DeckPanel deck={stats.deck} tutorCards={stats.tutor_cards} />
+            <DeckPanel deck={stats.deck} />
           </div>
         </div>
 
@@ -292,14 +292,13 @@ function TroubleSpots({ spots, answered }: { spots: TroubleSpot[]; answered: num
  * of it the reader earned rather than started with, so the split is the metric
  * and the starters shrinking to nothing is the story.
  */
-function DeckPanel({ deck, tutorCards }: { deck: DeckStat; tutorCards: number }) {
+function DeckPanel({ deck }: { deck: DeckStat }) {
   const navigate = useNavigate()
   const rows: { label: string; count: number; className: string }[] = [
     { label: 'From checkpoints', count: deck.weak_spots, className: 'bg-berry' },
     { label: 'From the tutor', count: deck.from_tutor, className: 'bg-sage' },
     { label: 'Starter cards', count: deck.starters, className: 'bg-amber' },
   ]
-  const earned = deck.weak_spots + deck.from_tutor
 
   return (
     <Card className="flex min-h-0 flex-col overflow-hidden p-5">
@@ -337,14 +336,6 @@ function DeckPanel({ deck, tutorCards }: { deck: DeckStat; tutorCards: number })
               </div>
             ))}
           </div>
-          {/* One line, always — this panel shares a row with the trouble spots
-              and the pair of them have to fit the window without scrolling. */}
-          <p className="mt-auto truncate pt-3 text-xs text-ink-soft">
-            {earned === 0
-              ? 'All twenty are still the ones you started with.'
-              : `${earned} of ${deck.total} earned` +
-                (tutorCards > 0 ? ` · ${tutorCards} written by the tutor in all` : '')}
-          </p>
         </>
       )}
     </Card>
