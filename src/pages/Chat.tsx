@@ -113,11 +113,12 @@ function detailOrMessage(message: string): string {
  * The tutor's reply as the AI SDK delivers it: prose in `text` parts, and
  * everything else in `data-*` parts.
  *
- * The turn is a JSON object on the server — a reply, and optionally a check, a
- * wrap-up proposal and a profile revision — but only the prose can be shown
- * half-written, so that is the only half that streams. The rest arrives whole,
- * after the object has closed and been validated. Reading it back off the
- * message is the client side of that split.
+ * The turn is still a JSON object streamed off the server — a reply, and
+ * optionally a check, a wrap-up proposal and a profile revision — but this
+ * screen never reveals it half-arrived: `waiting` (below) stays true for the
+ * whole turn, so by the time anything is rendered every part, prose included,
+ * has already landed. Reading it back off the message is just the flattening
+ * step.
  */
 function textOf(message: UIMessage): string {
   return message.parts
@@ -277,17 +278,14 @@ export default function Chat() {
   // session. Reset when a new session starts.
   const endedRef = useRef(false)
 
-  // Sent, but nothing back yet. `status` flips to "streaming" the instant the
-  // response opens — the server sends `text-start` before it has asked the
-  // model anything — which is well before any actual word has arrived, so it
-  // alone would skip the waiting page straight to a turn with nothing on it.
-  // Stay on it until the in-flight message actually has text.
-  const lastEntry = entries.at(-1)
-  const tutorTurnEmpty =
-    status === 'streaming' && lastEntry?.kind === 'tutor' && lastEntry.content.length === 0
-  const waiting = starting || status === 'submitted' || tutorTurnEmpty
-  const streaming = status === 'streaming' && !tutorTurnEmpty
-  const busy = waiting || streaming || finishing
+  // One loading state for the whole turn, not one for "text is arriving" and
+  // another for "the check is still being written behind it". The reply is a
+  // single JSON object server-side — a check isn't a check until every option
+  // has arrived — so there is nothing honest to show partway through it
+  // anyway. Wait for `status` to leave both in-flight states and reveal the
+  // turn whole.
+  const waiting = starting || status === 'submitted' || status === 'streaming'
+  const busy = waiting || finishing
 
   // Past sessions, for the setup screen — recaps only, the conversations
   // themselves were never kept. Loaded once; a session just ended is added to
@@ -326,34 +324,6 @@ export default function Chat() {
   const atLatest = step >= steps.length - 1
   const tutorIndex = steps[step]
   const current = tutorIndex === undefined ? null : entries[tutorIndex]
-
-  // The prose is only the first half of a turn: the check, the wrap-up
-  // proposal and the profile revision all arrive as data parts *after* the
-  // text has closed, and the reader has no visibility into that — the cursor
-  // just sits at the last word while the model keeps writing them. `settling`
-  // catches the gap: true once this turn's text has gone quiet for a stretch
-  // while the stream is still open. It folds into the same full-page `Waiting`
-  // used before the first word, rather than a loading state of its own — two
-  // different-looking loading states flickering between each other read as a
-  // glitch, not as one wait with two stages.
-  //
-  // Computed here, above the `phase === 'setup'` early return below, so these
-  // hooks run on every render regardless of phase — conditionally skipping a
-  // hook call is what breaks React's hook order.
-  const currentTutorId = current?.kind === 'tutor' ? current.id : null
-  const currentContent = current?.kind === 'tutor' ? current.content : ''
-  const [settling, setSettling] = useState(false)
-  useEffect(() => {
-    if (!streaming || !atLatest || !currentTutorId) {
-      setSettling(false)
-      return
-    }
-    setSettling(false)
-    const timer = setTimeout(() => setSettling(true), 500)
-    return () => clearTimeout(timer)
-    // Re-armed on every new stretch of text, not just once per message.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [streaming, atLatest, currentTutorId, currentContent])
 
   const name = profile?.display_name || profile?.email?.split('@')[0] || ''
 
@@ -512,11 +482,7 @@ export default function Chat() {
   const proposedEnd = atLatest && current?.kind === 'tutor' && current.wrapUp
 
   // What the tutor is working on, shown back to the reader while they wait —
-  // unless it's the canned "Keep going", which says nothing about them. The
-  // *most recent* thing they said, not just the last entry: once the tutor's
-  // reply starts arriving it becomes the last entry, but the reader's own
-  // words are still what the wait screen (including the settling gap after
-  // the prose, waiting on the check) should be showing back to them.
+  // unless it's the canned "Keep going", which says nothing about them.
   const lastReaderEntry = [...entries].reverse().find((e) => e.kind === 'reader')
   const waitingOn =
     lastReaderEntry && lastReaderEntry.content !== KEEP_GOING ? lastReaderEntry.content : null
@@ -611,12 +577,11 @@ export default function Chat() {
         // from the tutor composing its next turn, and "Reading what you
         // said" is actively wrong once the reader has asked to leave.
         <Waiting label="Wrapping up your session" aside={null} />
-      ) : waiting || settling ? (
-        // The page waits only until the first words land — and again, on the
-        // same screen, if the turn goes quiet after its prose while the model
-        // is still writing the check or wrap-up behind it. One loading state,
-        // not two: earlier this flickered between this full-page wait and a
-        // second, different-looking inline indicator for that second gap.
+      ) : waiting ? (
+        // One loading state for the whole turn: the reply is a single JSON
+        // object server-side — prose, check, wrap-up and profile revision
+        // together — so nothing about it is worth showing half-arrived. The
+        // turn appears whole once the model has finished writing it.
         <Waiting
           label={entries.length === 0 ? 'Putting a session together' : 'Reading what you said'}
           // Their own words while the tutor works on them — but not the canned
@@ -639,12 +604,6 @@ export default function Chat() {
             <div key={step} className="rise space-y-7">
               <p className="whitespace-pre-wrap text-[17px] leading-[1.8] text-ink">
                 {renderEmphasis(current.content)}
-                {/* Only while this turn is still being written, and only on the
-                    turn being written — stepping back mid-stream shows an older
-                    page, which is finished. */}
-                {streaming && atLatest && (
-                  <span className="ml-0.5 inline-block h-[1.1em] w-[2px] translate-y-[0.18em] animate-pulse bg-amber align-baseline" />
-                )}
               </p>
               {current.check && (
                 <Check
@@ -676,9 +635,11 @@ export default function Chat() {
             />
           )}
           {!error && streamError && (
+            // No `retrying` state to show here: a retry immediately flips
+            // `status` to "submitted"/"streaming", which sends this whole
+            // block behind the single `waiting` screen above until it lands.
             <ErrorDialog
               message={detailOrMessage(streamError.message)}
-              retrying={status === 'streaming'}
               onRetry={() => regenerate()}
               onBack={clearError}
               backLabel="Dismiss"
