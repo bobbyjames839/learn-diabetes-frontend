@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport } from 'ai'
 import type { UIMessage } from 'ai'
-import { SESSION_TOPICS, api } from '../lib/api'
+import { API_BASE, SESSION_TOPICS, api } from '../lib/api'
 import { supabase } from '../lib/supabase'
 import type {
   ChatCheck,
@@ -233,7 +233,7 @@ export default function Chat() {
   const transport = useMemo(
     () =>
       new DefaultChatTransport<UIMessage>({
-        api: '/api/chat',
+        api: `${API_BASE}/api/chat`,
         headers: async () => {
           const {
             data: { session },

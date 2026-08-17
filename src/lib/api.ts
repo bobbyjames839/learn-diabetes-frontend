@@ -289,7 +289,7 @@ export interface Stats {
  * local backend. In production there's no proxy, so VITE_API_URL points
  * straight at the deployed backend. Left unset, paths stay relative.
  */
-const API_BASE = import.meta.env.VITE_API_URL ?? ''
+export const API_BASE = import.meta.env.VITE_API_URL ?? ''
 
 /** Every call carries the Supabase access token; the API rejects anything else. */
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
