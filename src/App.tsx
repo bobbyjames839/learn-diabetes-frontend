@@ -113,7 +113,7 @@ const LESSON_READER = /^\/lessons\/[^/]+$/
 //
 // Only from `lg` up — on a phone these are taller than the window and pinning
 // them would cut them off.
-const FIXED_HEIGHT = ['/', '/lessons']
+const FIXED_HEIGHT = ['/lessons']
 
 // The tutor, at every width. A session covers the whole window from inside the
 // page anyway (`fixed inset-0`), so pinning its setup screen too is what keeps
