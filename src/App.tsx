@@ -3,9 +3,8 @@ import { NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import type { ReactNode } from 'react'
 import { useAuth } from './auth/AuthProvider'
 import { loadProfile, submitOnboarding, useAppDispatch, useAppSelector } from './store'
-import { Button } from './components/ui'
 import type { OnboardingAnswers } from './lib/api'
-import { Avatar, Container, Spinner } from './components/ui'
+import { Avatar, Container, ErrorDialog, Spinner } from './components/ui'
 import Onboarding from './components/Onboarding'
 import Home from './pages/Home'
 import Lessons from './pages/Lessons'
@@ -145,19 +144,13 @@ function Shell({ children }: { children: ReactNode }) {
   // broken app.
   if (!profile && profileError) {
     return (
-      <div className="flex min-h-full flex-col items-center justify-center gap-4 px-6 text-center">
-        <h1 className="text-lg font-bold tracking-tight">Couldn't reach the server</h1>
-        <p className="max-w-sm text-sm text-ink-soft">{profileError}</p>
-        <div className="flex gap-3">
-          <Button onClick={() => dispatch(loadProfile())}>Try again</Button>
-          <button
-            onClick={signOut}
-            className="cursor-pointer px-3 py-2 text-sm font-semibold text-ink-soft underline underline-offset-4"
-          >
-            Sign out
-          </button>
-        </div>
-      </div>
+      <ErrorDialog
+        title="Couldn't reach the server"
+        message={profileError}
+        onRetry={() => dispatch(loadProfile())}
+        onBack={signOut}
+        backLabel="Sign out"
+      />
     )
   }
 
@@ -208,6 +201,7 @@ function Shell({ children }: { children: ReactNode }) {
           submitting={onboardingSaving}
           error={onboardingError}
           onSubmit={handleOnboarding}
+          onDismissError={() => setOnboardingError(null)}
         />
       )}
     </div>

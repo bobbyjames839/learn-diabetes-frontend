@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { loadLessons, useAppDispatch, useAppSelector } from '../store'
-import { Bar, Card, EmptyState, ErrorBanner, Spinner, categoryStyle } from '../components/ui'
+import { Bar, Card, EmptyState, ErrorDialog, Spinner, categoryStyle } from '../components/ui'
 import { useSmoothWheelScroll } from '../hooks/useSmoothWheelScroll'
 
 /**
@@ -12,6 +12,7 @@ import { useSmoothWheelScroll } from '../hooks/useSmoothWheelScroll'
 
 export default function Lessons() {
   const dispatch = useAppDispatch()
+  const navigate = useNavigate()
   const { lessons, loading, error } = useAppSelector((s) => s.app)
   const [filter, setFilter] = useState('all')
   const gridScrollRef = useSmoothWheelScroll<HTMLUListElement>()
@@ -49,9 +50,12 @@ export default function Lessons() {
       </div>
 
       {error && (
-        <div className="mb-6 shrink-0">
-          <ErrorBanner message={error} onRetry={() => dispatch(loadLessons())} />
-        </div>
+        <ErrorDialog
+          message={error}
+          onRetry={() => dispatch(loadLessons())}
+          onBack={() => navigate('/')}
+          backLabel="Back to overview"
+        />
       )}
 
       {lessons.length === 0 && !loading ? (

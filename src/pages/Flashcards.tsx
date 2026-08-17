@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { loadFlashcards, useAppDispatch, useAppSelector } from '../store'
-import { ErrorBanner, Spinner } from '../components/ui'
+import { ErrorDialog, Spinner } from '../components/ui'
 import FlashcardDeck from '../components/FlashcardDeck'
 
 /**
@@ -26,6 +27,7 @@ import FlashcardDeck from '../components/FlashcardDeck'
  */
 export default function Flashcards() {
   const dispatch = useAppDispatch()
+  const navigate = useNavigate()
   const { flashcards, error } = useAppSelector((s) => s.app)
   // Tracked here rather than inferred from an empty deck: a reader can
   // legitimately have no cards (nothing published yet), and treating that as
@@ -47,9 +49,12 @@ export default function Flashcards() {
       </div>
 
       {error && (
-        <div className="mb-6 shrink-0">
-          <ErrorBanner message={error} onRetry={() => dispatch(loadFlashcards())} />
-        </div>
+        <ErrorDialog
+          message={error}
+          onRetry={() => dispatch(loadFlashcards())}
+          onBack={() => navigate('/')}
+          backLabel="Back to overview"
+        />
       )}
 
       {loading ? <Spinner label="Loading your deck…" /> : <FlashcardDeck cards={flashcards} />}

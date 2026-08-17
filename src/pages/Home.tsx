@@ -3,12 +3,13 @@ import type { ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { DeckStat, TroubleSpot } from '../lib/api'
 import { loadDashboard, updateProfile, useAppDispatch, useAppSelector } from '../store'
+import { useAuth } from '../auth/AuthProvider'
 import { useSmoothWheelScroll } from '../hooks/useSmoothWheelScroll'
 import {
   Bar,
   Button,
   Card,
-  ErrorBanner,
+  ErrorDialog,
   ProgressRing,
   Spinner,
   StatCard,
@@ -25,6 +26,7 @@ function greeting(date = new Date()) {
 export default function Home() {
   const dispatch = useAppDispatch()
   const navigate = useNavigate()
+  const { signOut } = useAuth()
   const { profile, stats, loading, error } = useAppSelector((s) => s.app)
   const [editing, setEditing] = useState(false)
   const [name, setName] = useState('')
@@ -35,7 +37,18 @@ export default function Home() {
   }, [dispatch])
 
   if (loading && !stats) return <Spinner label="Loading your dashboard…" />
-  if (error) return <ErrorBanner message={error} onRetry={() => dispatch(loadDashboard())} />
+  // No sensible "back" from the overview — it's the root screen — so signing
+  // out stands in as the way out of a dashboard that won't load.
+  if (error) {
+    return (
+      <ErrorDialog
+        message={error}
+        onRetry={() => dispatch(loadDashboard())}
+        onBack={signOut}
+        backLabel="Sign out"
+      />
+    )
+  }
   if (!stats || !profile) return null
 
   const first = (profile.display_name || profile.email?.split('@')[0] || 'there').split(' ')[0]

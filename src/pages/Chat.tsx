@@ -20,7 +20,7 @@ import {
   useAppDispatch,
   useAppSelector,
 } from '../store'
-import { Button } from '../components/ui'
+import { Button, ErrorDialog } from '../components/ui'
 
 /**
  * A teaching session — and deliberately the inverse of a chatbot, in what it
@@ -250,6 +250,8 @@ export default function Chat() {
     messages,
     setMessages,
     sendMessage,
+    regenerate,
+    clearError,
     status,
     error: streamError,
   } = useChat({ transport })
@@ -315,8 +317,10 @@ export default function Chat() {
   // text has closed, and the reader has no visibility into that — the cursor
   // just sits at the last word while the model keeps writing them. `settling`
   // catches the gap: true once this turn's text has gone quiet for a stretch
-  // while the stream is still open, so there is something on screen saying a
-  // follow-up is still coming rather than nothing.
+  // while the stream is still open. It folds into the same full-page `Waiting`
+  // used before the first word, rather than a loading state of its own — two
+  // different-looking loading states flickering between each other read as a
+  // glitch, not as one wait with two stages.
   //
   // Computed here, above the `phase === 'setup'` early return below, so these
   // hooks run on every render regardless of phase — conditionally skipping a
@@ -472,14 +476,13 @@ export default function Chat() {
     )
   }
 
-  // One banner, two sources: the opening turn is a plain request and fails like
-  // one, every turn after it fails inside the stream and `useChat` surfaces it.
-  //
-  // A non-OK turn throws with the raw response body as its message (the
-  // transport's own doing — see `HttpChatTransport.sendMessages`), which for
-  // this API is a `{"detail": "..."}` JSON string rather than prose. Dig the
-  // detail back out so a 401 reads as "Session expired." instead of braces.
-  const failure = error ?? (streamError ? detailOrMessage(streamError.message) : null)
+  // Two failures share the popup below: the opening turn is a plain request
+  // and fails like one (`error`); every turn after it fails inside the stream
+  // and `useChat` surfaces it (`streamError`). A non-OK turn throws with the
+  // raw response body as its message (the transport's own doing — see
+  // `HttpChatTransport.sendMessages`), which for this API is a
+  // `{"detail": "..."}` JSON string rather than prose — `detailOrMessage` digs
+  // it back out so a 401 reads as "Session expired." instead of braces.
 
   const before = tutorIndex !== undefined && tutorIndex > 0 ? entries[tutorIndex - 1] : null
   const openCheck =
@@ -492,9 +495,14 @@ export default function Chat() {
   const proposedEnd = atLatest && current?.kind === 'tutor' && current.wrapUp
 
   // What the tutor is working on, shown back to the reader while they wait —
-  // unless it's the canned "Keep going", which says nothing about them.
-  const last = entries.at(-1)
-  const waitingOn = last?.kind === 'reader' && last.content !== KEEP_GOING ? last.content : null
+  // unless it's the canned "Keep going", which says nothing about them. The
+  // *most recent* thing they said, not just the last entry: once the tutor's
+  // reply starts arriving it becomes the last entry, but the reader's own
+  // words are still what the wait screen (including the settling gap after
+  // the prose, waiting on the check) should be showing back to them.
+  const lastReaderEntry = [...entries].reverse().find((e) => e.kind === 'reader')
+  const waitingOn =
+    lastReaderEntry && lastReaderEntry.content !== KEEP_GOING ? lastReaderEntry.content : null
 
   // Pinned to the window rather than trailing the text: on a short turn a
   // composer that follows the content floats halfway up the page.
@@ -580,12 +588,12 @@ export default function Chat() {
       onExit={finish}
       footer={composer}
     >
-      {waiting ? (
-        // The page waits only until the first words land. A session is stepped:
-        // what's coming isn't the next message in a log, it's the next page, so
-        // the current one steps aside for it the same way a lesson section gives
-        // way to its checkpoint. Once the tutor starts writing, that page is the
-        // turn itself, filling in.
+      {waiting || settling ? (
+        // The page waits only until the first words land — and again, on the
+        // same screen, if the turn goes quiet after its prose while the model
+        // is still writing the check or wrap-up behind it. One loading state,
+        // not two: earlier this flickered between this full-page wait and a
+        // second, different-looking inline indicator for that second gap.
         <Waiting
           label={entries.length === 0 ? 'Putting a session together' : 'Reading what you said'}
           // Their own words while the tutor works on them — but not the canned
@@ -615,16 +623,6 @@ export default function Chat() {
                   <span className="ml-0.5 inline-block h-[1.1em] w-[2px] translate-y-[0.18em] animate-pulse bg-amber align-baseline" />
                 )}
               </p>
-              {settling && (
-                <p className="flex items-center gap-2 text-sm text-ink-soft">
-                  <span className="inline-flex gap-1">
-                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-amber [animation-delay:-0.3s]" />
-                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-amber [animation-delay:-0.15s]" />
-                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-amber" />
-                  </span>
-                  Putting together what's next…
-                </p>
-              )}
               {current.check && (
                 <Check
                   check={current.check}
@@ -636,18 +634,32 @@ export default function Chat() {
             </div>
           )}
 
-          {failure && (
-            <div className="mt-8 rounded-card border border-berry/30 bg-berry-wash/40 px-5 py-4">
-              <p className="text-sm text-berry">{failure}</p>
-              {entries.length === 0 && (
-                <button
-                  onClick={begin}
-                  className="mt-3 text-sm font-semibold text-ink underline underline-offset-4"
-                >
-                  Try again
-                </button>
-              )}
-            </div>
+          {/* Two different failures share this spot, and get different ways out.
+              `error` means the opening turn never arrived — there is no session
+              to speak of yet, so the way out is leaving back to setup. A
+              `streamError` means a turn broke mid-conversation — the transcript
+              so far is still good, so the way out is dismissing the message and
+              picking up where it left off. */}
+          {error && (
+            <ErrorDialog
+              message={error}
+              retrying={starting}
+              onRetry={begin}
+              onBack={() => {
+                setError(null)
+                setPhase('setup')
+              }}
+              backLabel="Back to setup"
+            />
+          )}
+          {!error && streamError && (
+            <ErrorDialog
+              message={detailOrMessage(streamError.message)}
+              retrying={status === 'streaming'}
+              onRetry={() => regenerate()}
+              onBack={clearError}
+              backLabel="Dismiss"
+            />
           )}
         </div>
       )}

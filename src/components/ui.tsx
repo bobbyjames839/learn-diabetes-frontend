@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import type { ReactNode } from 'react'
 
 export const CATEGORY_STYLES: Record<string, { label: string; chip: string; dot: string }> = {
@@ -172,21 +173,82 @@ export function Avatar({ name, size = 36 }: { name: string; size?: number }) {
   )
 }
 
-export function ErrorBanner({ message, onRetry }: { message: string; onRetry?: () => void }) {
+/**
+ * The one shape every error in the app now takes: a popup over whatever is
+ * behind it, rather than text sitting inline where content used to be. A
+ * failed fetch shouldn't blank out a screen the reader was already on, and a
+ * failed action shouldn't erase the thing they were doing.
+ *
+ * Two ways out, offered independently — a screen only gets the ones that make
+ * sense for it:
+ *
+ * - `onRetry`, when the same request might just work this time (a reload, a
+ *   resubmit). Shown as the primary button.
+ * - `onBack`, when the reader might reasonably want out instead — back to
+ *   safer ground, or just dismissing the message to try again themselves.
+ *
+ * At least one of the two is expected; a dialog with neither has no way to
+ * close, which is worse than the inline text it replaced.
+ */
+export function ErrorDialog({
+  title = 'Something went wrong',
+  message,
+  onRetry,
+  retryLabel = 'Try again',
+  retrying = false,
+  onBack,
+  backLabel = 'Go back',
+}: {
+  title?: string
+  message: string
+  onRetry?: () => void
+  retryLabel?: string
+  retrying?: boolean
+  onBack?: () => void
+  backLabel?: string
+}) {
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape' && onBack) onBack()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onBack])
+
   return (
     <div
-      role="alert"
-      className="flex items-start justify-between gap-4 rounded-card border border-berry/25 bg-berry-wash px-5 py-4 text-sm text-berry"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/25 px-6 backdrop-blur-sm"
+      onClick={onBack}
     >
-      <span>{message}</span>
-      {onRetry && (
-        <button
-          onClick={onRetry}
-          className="shrink-0 cursor-pointer font-semibold underline underline-offset-2"
-        >
-          Retry
-        </button>
-      )}
+      <div
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="error-dialog-title"
+        onClick={(e) => e.stopPropagation()}
+        className="rise w-full max-w-md rounded-card border border-berry/30 bg-card px-6 py-5 shadow-lg"
+      >
+        <p id="error-dialog-title" className="text-sm font-bold text-berry">
+          {title}
+        </p>
+        <p className="mt-2 text-sm leading-relaxed text-ink-soft">{message}</p>
+
+        <div className="mt-5 flex justify-end gap-3">
+          {onBack && (
+            <button
+              onClick={onBack}
+              disabled={retrying}
+              className="cursor-pointer px-3 py-2 text-sm font-semibold text-ink-soft underline underline-offset-4"
+            >
+              {backLabel}
+            </button>
+          )}
+          {onRetry && (
+            <Button onClick={onRetry} disabled={retrying} className="h-10 rounded-card px-5">
+              {retrying ? 'Trying again…' : retryLabel}
+            </Button>
+          )}
+        </div>
+      </div>
     </div>
   )
 }

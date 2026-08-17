@@ -3,7 +3,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { api } from '../lib/api'
 import type { AnswerResult, Question } from '../lib/api'
-import { Button } from './ui'
+import { Button, ErrorDialog } from './ui'
 
 /**
  * The teacher stopping to ask.
@@ -38,6 +38,9 @@ export default function Checkpoint({
   const [retrying, setRetrying] = useState(false)
   const [pending, setPending] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // The choice that failed, kept so "Try again" can resubmit exactly that
+  // one rather than making the reader click it a second time.
+  const [failedIndex, setFailedIndex] = useState<number | null>(null)
 
   const settled = !!result?.settled
   // A wrong answer that still has a retry behind it: coaching first, then the
@@ -58,6 +61,7 @@ export default function Checkpoint({
       if (answered.settled) onSettled(answered)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not save your answer.')
+      setFailedIndex(index)
     } finally {
       setPending(null)
     }
@@ -154,7 +158,18 @@ export default function Checkpoint({
         </p>
       )}
 
-      {error && <p className="mt-3 text-sm font-semibold text-berry">{error}</p>}
+      {error && failedIndex !== null && (
+        <ErrorDialog
+          message={error}
+          retrying={pending !== null}
+          onRetry={() => choose(failedIndex)}
+          onBack={() => {
+            setError(null)
+            setFailedIndex(null)
+          }}
+          backLabel="Pick again"
+        />
+      )}
     </section>
   )
 }

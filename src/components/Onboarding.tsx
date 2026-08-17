@@ -7,7 +7,7 @@ import type {
   OnboardingGoal,
   OnboardingLearningStyle,
 } from '../lib/api'
-import { Button } from './ui'
+import { Button, ErrorDialog } from './ui'
 
 /**
  * The one time a reader is asked about themselves rather than about glucose.
@@ -96,12 +96,15 @@ export default function Onboarding({
   submitting,
   error,
   onSubmit,
+  onDismissError,
 }: {
   /** First name (or email handle) for the greeting — falls back to a plain "you" if blank. */
   name: string
   submitting: boolean
   error: string | null
   onSubmit: (answers: OnboardingAnswers) => void
+  /** Clears the error so the popup can be dismissed without resubmitting. */
+  onDismissError: () => void
 }) {
   // -1 is the welcome screen; 0..STEPS.length-1 are the questions.
   const [index, setIndex] = useState(-1)
@@ -190,8 +193,6 @@ export default function Onboarding({
           </ul>
         )}
 
-        {error && <p className="mt-4 text-sm font-semibold text-berry">{error}</p>}
-
         <div className={`mt-7 flex items-center gap-4 ${welcome ? 'justify-end' : 'justify-between'}`}>
           {!welcome && (
             <Button
@@ -208,6 +209,16 @@ export default function Onboarding({
           </Button>
         </div>
       </div>
+
+      {error && (
+        <ErrorDialog
+          message={error}
+          retrying={submitting}
+          onRetry={() => onSubmit(answers as OnboardingAnswers)}
+          onBack={onDismissError}
+          backLabel="Edit answers"
+        />
+      )}
     </div>
   )
 }

@@ -13,7 +13,7 @@ import type {
 import { setLessonCompleted, useAppDispatch } from '../store'
 import Checkpoint from '../components/Checkpoint'
 import Coach from '../components/Coach'
-import { Button, Card, ErrorBanner, Spinner, categoryStyle } from '../components/ui'
+import { Button, Card, ErrorDialog, Spinner, categoryStyle } from '../components/ui'
 
 /**
  * A lesson, taken one step at a time.
@@ -50,7 +50,13 @@ export default function LessonDetail() {
   // Every checkpoint attempt made this session, in order. Held here rather than
   // saved as it happens — it only becomes a record when Mark complete is pressed.
   const [answers, setAnswers] = useState<AnswerAttempt[]>([])
-  const [error, setError] = useState<string | null>(null)
+  // Kept apart from `saveError` below: this one means there's no lesson to
+  // show at all, so it replaces the page rather than sitting on top of it.
+  const [loadError, setLoadError] = useState<string | null>(null)
+  // Mark complete failing shouldn't erase the recap screen the reader is
+  // looking at and the answers they've built up this session — it's a popup
+  // over the same screen, not a reason to lose the place they're in.
+  const [saveError, setSaveError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
   // Steps are addressed by id, not index: the questions arrive in a second
@@ -62,6 +68,10 @@ export default function LessonDetail() {
   // just the next click in a chain, short enough not to be a nag.
   const [settleWait, setSettleWait] = useState(true)
 
+  // `attempt` forces the effect to re-run on Retry without needing `slug`
+  // itself to change.
+  const [attempt, setAttempt] = useState(0)
+
   useEffect(() => {
     if (!slug) return
     let cancelled = false
@@ -70,14 +80,14 @@ export default function LessonDetail() {
     setQuestionsLoading(true)
     setSettled({})
     setAnswers([])
-    setError(null)
+    setLoadError(null)
     setStepId('')
     setSeen(new Set())
 
     api
       .lesson(slug)
       .then((data) => !cancelled && setLesson(data))
-      .catch((e) => !cancelled && setError(e instanceof Error ? e.message : 'Could not load.'))
+      .catch((e) => !cancelled && setLoadError(e instanceof Error ? e.message : 'Could not load.'))
 
     // Separate request on purpose: generating a lesson's checkpoints the first
     // time takes a few seconds, and the reader should be reading by then.
@@ -101,7 +111,7 @@ export default function LessonDetail() {
     return () => {
       cancelled = true
     }
-  }, [slug])
+  }, [slug, attempt])
 
   const steps = useMemo<Step[]>(() => {
     if (!lesson) return []
@@ -176,6 +186,7 @@ export default function LessonDetail() {
   async function markComplete() {
     if (!lesson) return
     setSaving(true)
+    setSaveError(null)
     try {
       await dispatch(
         setLessonCompleted({ slug: lesson.slug, completed: true, answers }),
@@ -183,13 +194,22 @@ export default function LessonDetail() {
       setLesson({ ...lesson, completed: true })
       navigate('/lessons')
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not save your progress.')
+      setSaveError(e instanceof Error ? e.message : 'Could not save your progress.')
     } finally {
       setSaving(false)
     }
   }
 
-  if (error) return <ErrorBanner message={error} />
+  if (loadError) {
+    return (
+      <ErrorDialog
+        message={loadError}
+        onRetry={() => setAttempt((a) => a + 1)}
+        onBack={() => navigate('/lessons')}
+        backLabel="Back to lessons"
+      />
+    )
+  }
   if (!lesson || !step) return <Spinner label="Loading lesson…" />
 
   const style = categoryStyle(lesson.category)
@@ -380,6 +400,16 @@ export default function LessonDetail() {
             : { kind: step.kind }
         }
       />
+
+      {saveError && (
+        <ErrorDialog
+          message={saveError}
+          retrying={saving}
+          onRetry={markComplete}
+          onBack={() => setSaveError(null)}
+          backLabel="Not now"
+        />
+      )}
     </div>
   )
 }
