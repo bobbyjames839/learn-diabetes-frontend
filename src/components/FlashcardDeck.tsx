@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { Flashcard } from '../lib/api'
+import { useSmoothWheelScroll } from '../hooks/useSmoothWheelScroll'
 import { categoryStyle } from './ui'
 
 /**
@@ -33,6 +34,7 @@ function faceLabel(card: Flashcard, flipped: boolean) {
 export default function FlashcardDeck({ cards }: { cards: Flashcard[] }) {
   const [index, setIndex] = useState(0)
   const [flipped, setFlipped] = useState(false)
+  const faceScrollRef = useSmoothWheelScroll<HTMLDivElement>()
 
   // A newly finished lesson can reshuffle the ranking entirely — follow the
   // reshuffled deck from the top rather than leaving the reader on a card
@@ -137,6 +139,7 @@ export default function FlashcardDeck({ cards }: { cards: Flashcard[] }) {
             easy to miss. */}
         <div
           key={`${index}-${flipped}`}
+          ref={faceScrollRef}
           className="rise scroll-soft flex flex-1 items-center overflow-y-auto py-5"
         >
           {/* A question is short and wants to read large; an explanation is a

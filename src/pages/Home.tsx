@@ -262,6 +262,7 @@ function PanelHeading({ children }: { children: ReactNode }) {
  */
 function TroubleSpots({ spots, answered }: { spots: TroubleSpot[]; answered: number }) {
   const navigate = useNavigate()
+  const scrollRef = useSmoothWheelScroll<HTMLDivElement>()
 
   return (
     <Card className="flex min-h-0 flex-col overflow-hidden p-5">
@@ -274,7 +275,7 @@ function TroubleSpots({ spots, answered }: { spots: TroubleSpot[]; answered: num
             : `Nothing tripping you up — ${answered} checkpoints and no weak spots yet.`}
         </p>
       ) : (
-        <div className="mt-3 min-h-0 space-y-1.5 overflow-y-auto">
+        <div ref={scrollRef} className="scroll-soft mt-3 min-h-0 space-y-1.5 overflow-y-auto">
           {spots.map((spot) => {
             const style = categoryStyle(spot.category)
             return (

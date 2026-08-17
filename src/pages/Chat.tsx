@@ -5,6 +5,7 @@ import { DefaultChatTransport } from 'ai'
 import type { UIMessage } from 'ai'
 import { API_BASE, SESSION_TOPICS, api } from '../lib/api'
 import { supabase } from '../lib/supabase'
+import { useSmoothWheelScroll } from '../hooks/useSmoothWheelScroll'
 import type {
   ChatCheck,
   ChatSessionSummary,
@@ -765,7 +766,7 @@ function SessionShell({
         </div>
       </header>
 
-      <div ref={scrollRef} className="flex-1 overflow-y-auto">
+      <div ref={scrollRef} className="scroll-soft flex-1 overflow-y-auto">
         <div ref={contentRef}>{children}</div>
       </div>
       {footer}
@@ -933,6 +934,8 @@ function Setup({
   pastSessions: ChatSessionSummary[]
   onSelectSession: (session: ChatSessionSummary) => void
 }) {
+  const scrollRef = useSmoothWheelScroll<HTMLDivElement>()
+
   return (
     // Fits the height it is given rather than setting its own: the shell pins
     // /chat to the window at every width, so the heading and the Begin control
@@ -946,7 +949,7 @@ function Setup({
         to review.
       </p>
 
-      <div className="-mx-1 min-h-0 flex-1 overflow-y-auto px-1">
+      <div ref={scrollRef} className="scroll-soft -mx-1 min-h-0 flex-1 overflow-y-auto px-1">
         <fieldset className="mt-9">
           <legend className="text-xs font-bold uppercase tracking-[0.14em] text-ink-soft">
             What do you want to go over{name ? `, ${name}` : ''}?

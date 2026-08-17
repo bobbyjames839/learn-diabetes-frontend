@@ -105,7 +105,7 @@ export default function Lessons() {
 
           <div className="flex min-w-0 flex-1 flex-col lg:min-h-0">
             {/* Mobile filter */}
-            <div className="mb-5 flex shrink-0 gap-2 overflow-x-auto lg:hidden">
+            <div className="scroll-soft mb-5 flex shrink-0 gap-2 overflow-x-auto lg:hidden">
               {['all', ...categories].map((c) => (
                 <button
                   key={c}
