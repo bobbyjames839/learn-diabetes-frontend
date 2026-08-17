@@ -267,6 +267,11 @@ export default function Chat() {
   const entriesRef = useRef(entries)
   entriesRef.current = entries
 
+  // Set the instant either ending path commits to sending the request — not
+  // after it resolves — so the other path can never also fire for the same
+  // session. Reset when a new session starts.
+  const endedRef = useRef(false)
+
   // Sent, but nothing back yet. `status` flips to "streaming" the instant the
   // response opens — the server sends `text-start` before it has asked the
   // model anything — which is well before any actual word has arrived, so it
@@ -288,10 +293,14 @@ export default function Chat() {
   }, [dispatch])
 
   // Leaving the page ends the session too — the cards are the point of ending
-  // it, and a reader who wanders off has still had the conversation.
+  // it, and a reader who wanders off has still had the conversation. Guarded
+  // against `finish()` below: a reader who clicks "End session" and then
+  // navigates away before that request has resolved would otherwise trigger
+  // both, writing the same session's cards twice.
   useEffect(() => {
     return () => {
-      if (entriesRef.current.length > 1) {
+      if (!endedRef.current && entriesRef.current.length > 1) {
+        endedRef.current = true
         dispatch(
           endChatSession({
             messages: toTurns(entriesRef.current),
@@ -435,6 +444,7 @@ export default function Chat() {
       setPicked({})
       return
     }
+    endedRef.current = true
     setStarting(true)
     try {
       const { session } = await dispatch(
@@ -449,6 +459,7 @@ export default function Chat() {
       setPicked({})
       setStarting(false)
       setPhase('setup')
+      endedRef.current = false
     }
   }
 
